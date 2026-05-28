@@ -1,0 +1,129 @@
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(here)
+
+lst <- read_csv(
+  here("data", "Zagreb_MO_LST_2015_2024.csv"),
+  locale = locale(encoding = "UTF-8"),
+  show_col_types = FALSE
+)
+
+indices <- read_csv(
+  here("data", "NDVI_NDBI_MO_2015_2024.csv"),
+  locale = locale(encoding = "UTF-8"),
+  show_col_types = FALSE
+)
+
+lst <- lst %>%
+  mutate(
+    JMS_MB = as.character(JMS_MB),
+    MO = as.character(MO),
+    year = as.numeric(year),
+    LST = as.numeric(LST)
+  )
+
+indices <- indices %>%
+  mutate(
+    JMS_MB = as.character(JMS_MB),
+    MO = as.character(MO),
+    year = as.numeric(year),
+    NDVI = as.numeric(NDVI),
+    NDBI = as.numeric(NDBI)
+  )
+
+df_all <- lst %>%
+  select(JMS_MB, MO, year, LST) %>%
+  left_join(
+    indices %>% select(JMS_MB, year, NDVI, NDBI),
+    by = c("JMS_MB", "year")
+  )
+
+df_delta <- df_all %>%
+  group_by(JMS_MB, MO) %>%
+  summarise(
+    LST_start = mean(LST[year %in% c(2015, 2016)], na.rm = TRUE),
+    LST_end = mean(LST[year %in% c(2023, 2024)], na.rm = TRUE),
+    NDVI_start = mean(NDVI[year %in% c(2015, 2016)], na.rm = TRUE),
+    NDVI_end = mean(NDVI[year %in% c(2023, 2024)], na.rm = TRUE),
+    NDBI_start = mean(NDBI[year %in% c(2015, 2016)], na.rm = TRUE),
+    NDBI_end = mean(NDBI[year %in% c(2023, 2024)], na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    dLST = LST_end - LST_start,
+    dNDVI = NDVI_end - NDVI_start,
+    dNDBI = NDBI_end - NDBI_start
+  )
+
+write_csv(
+  df_delta,
+  here("results", "Delta_LST_NDVI_NDBI_MO_2015_2024.csv")
+)
+
+plot_ndvi <- ggplot(df_delta, aes(x = dNDVI, y = dLST)) +
+  geom_point(
+    position = position_jitter(width = 0.005, height = 0),
+    alpha = 0.5,
+    size = 1.7
+  ) +
+  geom_smooth(
+    method = "lm",
+    color = "red",
+    linewidth = 1.3
+  ) +
+  labs(
+    x = expression(Delta * NDVI),
+    y = expression(Delta * "LST (" * degree * C * ")")
+  ) +
+  theme_classic() +
+  theme(
+    axis.title = element_text(size = 18, face = "bold"),
+    axis.text = element_text(size = 14, color = "black"),
+    axis.line = element_line(linewidth = 0.8),
+    panel.grid = element_blank()
+  )
+
+plot_ndbi <- ggplot(df_delta, aes(x = dNDBI, y = dLST)) +
+  geom_point(
+    position = position_jitter(width = 0.0015, height = 0),
+    alpha = 0.5,
+    size = 1.7
+  ) +
+  geom_smooth(
+    method = "lm",
+    color = "blue",
+    linewidth = 1.3
+  ) +
+  labs(
+    x = expression(Delta * NDBI),
+    y = expression(Delta * "LST (" * degree * C * ")")
+  ) +
+  theme_classic() +
+  theme(
+    axis.title = element_text(size = 18, face = "bold"),
+    axis.text = element_text(size = 14, color = "black"),
+    axis.line = element_line(linewidth = 0.8),
+    panel.grid = element_blank()
+  )
+
+print(plot_ndvi)
+print(plot_ndbi)
+
+ggsave(
+  filename = here("results", "Figure8_Delta_LST_vs_NDVI.png"),
+  plot = plot_ndvi,
+  width = 9,
+  height = 6.5,
+  dpi = 300,
+  bg = "white"
+)
+
+ggsave(
+  filename = here("results", "Figure8_Delta_LST_vs_NDBI.png"),
+  plot = plot_ndbi,
+  width = 9,
+  height = 6.5,
+  dpi = 300,
+  bg = "white"
+)
