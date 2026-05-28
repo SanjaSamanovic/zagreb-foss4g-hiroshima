@@ -1,0 +1,49 @@
+library(readr)
+library(ggplot2)
+library(here)
+
+sen_df <- read_csv(
+  here("results", "LST_slope_and_Sen_slope_MO_2015_2024.csv"),
+  show_col_types = FALSE
+)
+
+p_sen_hist <- ggplot(sen_df, aes(x = sen_slope)) +
+  geom_histogram(
+    binwidth = 0.025,
+    boundary = 0,
+    fill = "grey75",
+    color = "grey25"
+  ) +
+  geom_vline(
+    xintercept = mean(sen_df$sen_slope, na.rm = TRUE),
+    linetype = "dashed",
+    linewidth = 0.9,
+    color = "red"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 0.35, 0.05),
+    limits = c(0, 0.35)
+  ) +
+  labs(
+    x = "Sen slope LST (°C/year)",
+    y = "Number of local committees"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    axis.title.x = element_text(size = 16),
+    axis.title.y = element_text(size = 16),
+    axis.text.x = element_text(size = 14),
+    axis.text.y = element_text(size = 14)
+  )
+
+print(p_sen_hist)
+
+ggsave(
+  filename = here("results", "histogram_Sen_slope_LST.png"),
+  plot = p_sen_hist,
+  width = 14,
+  height = 9,
+  units = "cm",
+  dpi = 300,
+  bg = "white"
+)
