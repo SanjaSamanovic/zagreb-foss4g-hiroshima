@@ -1,0 +1,132 @@
+library(sf)
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(classInt)
+library(trend)
+library(grid)
+library(here)
+
+shp <- st_read(
+  here("data", "Mjesni_odbori_Zagreb", "Mjesni_odbori_Zagreb.shp"),
+  quiet = TRUE
+)
+
+lst <- read_csv(
+  here("data", "Zagreb_MO_LST_2015_2024.csv"),
+  locale = locale(encoding = "UTF-8"),
+  show_col_types = FALSE
+)
+
+lst <- lst %>%
+  mutate(
+    JMS_MB = as.character(JMS_MB),
+    year = as.numeric(year),
+    LST = as.numeric(LST)
+  )
+
+shp <- shp %>%
+  mutate(JMS_MB = as.character(JMS_MB))
+
+slope_df <- lst %>%
+  arrange(JMS_MB, year) %>%
+  group_by(JMS_MB) %>%
+  summarise(
+    slope = coef(lm(LST ~ year, na.action = na.omit))[2],
+    .groups = "drop"
+  )
+
+sen_df <- lst %>%
+  arrange(JMS_MB, year) %>%
+  group_by(JMS_MB) %>%
+  summarise(
+    sen_slope = sens.slope(LST)$estimates,
+    .groups = "drop"
+  )
+
+data_all <- shp %>%
+  left_join(slope_df, by = "JMS_MB") %>%
+  left_join(sen_df, by = "JMS_MB")
+
+cat("Local committees without linear slope:", sum(is.na(data_all$slope)), "\n")
+cat("Local committees without Sen slope:", sum(is.na(data_all$sen_slope)), "\n")
+
+jenks <- classIntervals(
+  data_all$sen_slope[!is.na(data_all$sen_slope)],
+  n = 5,
+  style = "jenks"
+)
+
+breaks <- jenks$brks
+breaks[1] <- min(data_all$sen_slope, na.rm = TRUE) - 1e-6
+breaks[length(breaks)] <- max(data_all$sen_slope, na.rm = TRUE) + 1e-6
+
+labels <- paste0(
+  round(head(breaks, -1), 2),
+  " – ",
+  round(tail(breaks, -1), 2)
+)
+
+data_all <- data_all %>%
+  mutate(
+    sen_class = cut(
+      sen_slope,
+      breaks = breaks,
+      include.lowest = TRUE,
+      labels = labels
+    )
+  )
+
+p_sen <- ggplot(data_all) +
+  geom_sf(
+    aes(fill = sen_class),
+    color = "white",
+    size = 0.1
+  ) +
+  scale_fill_brewer(
+    palette = "RdYlBu",
+    direction = -1,
+    name = "Sen slope\n(°C/year)",
+    drop = FALSE,
+    na.translate = FALSE,
+    guide = guide_legend(
+      keyheight = unit(0.8, "cm"),
+      keywidth = unit(0.8, "cm")
+    )
+  ) +
+  coord_sf(datum = NA) +
+  theme_void(base_size = 14) +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(face = "bold", size = 16),
+    legend.text = element_text(size = 14),
+    legend.key = element_rect(fill = "white", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+
+print(p_sen)
+
+ggsave(
+  filename = here("results", "LST_Sen_slope_MO_2015_2024.png"),
+  plot = p_sen,
+  width = 10,
+  height = 8,
+  dpi = 300,
+  bg = "white"
+)
+
+cor_value <- cor(
+  data_all$slope,
+  data_all$sen_slope,
+  use = "complete.obs"
+)
+
+cat("Correlation between linear slope and Sen slope:", cor_value, "\n")
+
+write_csv(
+  data_all %>%
+    st_drop_geometry() %>%
+    select(JMS_MB, JMS_IME, slope, sen_slope),
+  here("results", "LST_slope_and_Sen_slope_MO_2015_2024.csv")
+)
