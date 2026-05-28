@@ -1,0 +1,49 @@
+library(readr)
+library(ggplot2)
+library(here)
+
+slope_df <- read_csv(
+  here("results", "LST_slope_MO_2015_2024.csv"),
+  show_col_types = FALSE
+)
+
+hist_linear <- ggplot(slope_df, aes(x = slope)) +
+  geom_histogram(
+    binwidth = 0.025,
+    boundary = 0,
+    fill = "grey75",
+    color = "grey25"
+  ) +
+  geom_vline(
+    xintercept = mean(slope_df$slope, na.rm = TRUE),
+    linetype = "dashed",
+    linewidth = 0.9,
+    color = "red"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 0.35, 0.05),
+    limits = c(0, 0.35)
+  ) +
+  labs(
+    x = "LST trend (°C/year)",
+    y = "Number of local committees"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    axis.title.x = element_text(size = 16),
+    axis.title.y = element_text(size = 16),
+    axis.text.x = element_text(size = 14),
+    axis.text.y = element_text(size = 14)
+  )
+
+print(hist_linear)
+
+ggsave(
+  filename = here("results", "histogram_linear_LST_trend.png"),
+  plot = hist_linear,
+  width = 14,
+  height = 9,
+  units = "cm",
+  dpi = 300,
+  bg = "white"
+)
