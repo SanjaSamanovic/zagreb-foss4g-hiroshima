@@ -1,0 +1,47 @@
+library(readr)
+library(ggplot2)
+library(here)
+
+slope_df <- read_csv(
+  here("results", "LST_slope_and_Sen_slope_MO_2015_2024.csv"),
+  show_col_types = FALSE
+)
+
+p_compare <- ggplot(
+  slope_df,
+  aes(x = slope, y = sen_slope)
+) +
+  geom_point(
+    color = "black",
+    size = 1.2,
+    alpha = 0.65
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE,
+    linetype = "solid",
+    linewidth = 1,
+    color = "blue"
+  ) +
+  labs(
+    x = "Linear slope (°C/year)",
+    y = "Sen slope (°C/year)"
+  ) +
+  theme_classic(base_size = 15) +
+  theme(
+    axis.title.x = element_text(size = 18),
+    axis.title.y = element_text(size = 18),
+    axis.text.x = element_text(size = 15, color = "black"),
+    axis.text.y = element_text(size = 15, color = "black")
+  )
+
+print(p_compare)
+
+ggsave(
+  filename = here("results", "LST_slope_vs_Sen_slope_2015_2024.png"),
+  plot = p_compare,
+  width = 7,
+  height = 5,
+  dpi = 300,
+  bg = "white"
+)
