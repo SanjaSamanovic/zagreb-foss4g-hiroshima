@@ -1,0 +1,101 @@
+library(sf)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(Kendall)
+library(grid)
+library(here)
+
+shp <- st_read(
+  here("data", "Mjesni_odbori_Zagreb", "Mjesni_odbori_Zagreb.shp"),
+  quiet = TRUE
+)
+
+lst <- read_csv(
+  here("data", "Zagreb_MO_LST_2015_2024.csv"),
+  locale = locale(encoding = "UTF-8"),
+  show_col_types = FALSE
+)
+
+lst <- lst %>%
+  mutate(
+    JMS_MB = as.character(JMS_MB),
+    year = as.numeric(year),
+    LST = as.numeric(LST)
+  )
+
+shp <- shp %>%
+  mutate(JMS_MB = as.character(JMS_MB))
+
+mk_df <- lst %>%
+  arrange(JMS_MB, year) %>%
+  group_by(JMS_MB) %>%
+  summarise(
+    tau = Kendall(year, LST)$tau,
+    p_value = Kendall(year, LST)$sl,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    mk_category = case_when(
+      p_value < 0.05 & tau > 0 ~ "Statistical support",
+      p_value >= 0.05 & p_value < 0.10 & tau > 0 ~ "Indicative support",
+      TRUE ~ "No statistical support"
+    ),
+    mk_category = factor(
+      mk_category,
+      levels = c(
+        "Statistical support",
+        "Indicative support",
+        "No statistical support"
+      )
+    )
+  )
+
+data_mk <- shp %>%
+  left_join(mk_df, by = "JMS_MB")
+
+p_mk_cat <- ggplot(data_mk) +
+  geom_sf(
+    aes(fill = mk_category),
+    color = "white",
+    size = 0.1
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Statistical support" = "red",
+      "Indicative support" = "orange",
+      "No statistical support" = "lightgrey"
+    ),
+    name = "Mann–Kendall",
+    drop = FALSE,
+    guide = guide_legend(
+      keyheight = unit(0.8, "cm"),
+      keywidth = unit(0.8, "cm")
+    )
+  ) +
+  coord_sf(datum = NA) +
+  theme_void(base_size = 14) +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(face = "bold", size = 15),
+    legend.text = element_text(size = 13),
+    legend.key = element_rect(fill = "white", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+
+print(p_mk_cat)
+
+ggsave(
+  filename = here("results", "LST_Mann_Kendall_support_MO_2015_2024.png"),
+  plot = p_mk_cat,
+  width = 10,
+  height = 8,
+  dpi = 300,
+  bg = "white"
+)
+
+write_csv(
+  mk_df,
+  here("results", "LST_Mann_Kendall_results_MO_2015_2024.csv")
+)
