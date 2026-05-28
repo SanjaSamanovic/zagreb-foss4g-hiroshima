@@ -1,0 +1,105 @@
+library(sf)
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(grid)
+library(here)
+
+shp <- st_read(
+  here("data", "Mjesni_odbori_Zagreb", "Mjesni_odbori_Zagreb.shp"),
+  quiet = TRUE
+)
+
+lst <- read_csv(
+  here("data", "Zagreb_MO_LST_2015_2024.csv"),
+  locale = locale(encoding = "UTF-8"),
+  show_col_types = FALSE
+)
+
+lst <- lst %>%
+  mutate(
+    JMS_MB = as.character(JMS_MB),
+    MO = as.character(MO),
+    year = as.numeric(year),
+    LST = as.numeric(LST)
+  )
+
+shp <- shp %>%
+  mutate(JMS_MB = as.character(JMS_MB))
+
+slope_df <- lst %>%
+  group_by(JMS_MB) %>%
+  summarise(
+    MO = first(MO),
+    slope = coef(lm(LST ~ year, na.action = na.omit))[2],
+    mean_LST = mean(LST, na.rm = TRUE),
+    min_LST = min(LST, na.rm = TRUE),
+    max_LST = max(LST, na.rm = TRUE),
+    n_years = sum(!is.na(LST)),
+    .groups = "drop"
+  )
+
+data_joined <- shp %>%
+  left_join(slope_df, by = "JMS_MB")
+
+cat("Local committees without slope result:", sum(is.na(data_joined$slope)), "\n")
+
+breaks <- c(0, 0.10, 0.17, 0.23, 0.27, 0.34)
+labels <- c("0 – 0.10", "0.10 – 0.17", "0.17 – 0.23", "0.23 – 0.27", "0.27 – 0.34")
+
+breaks[1] <- min(0, min(data_joined$slope, na.rm = TRUE)) - 1e-6
+breaks[length(breaks)] <- max(0.34, max(data_joined$slope, na.rm = TRUE)) + 1e-6
+
+data_joined <- data_joined %>%
+  mutate(
+    slope_class = cut(
+      slope,
+      breaks = breaks,
+      include.lowest = TRUE,
+      labels = labels
+    )
+  )
+
+p <- ggplot(data_joined) +
+  geom_sf(
+    aes(fill = slope_class),
+    color = "white",
+    size = 0.1
+  ) +
+  scale_fill_brewer(
+    palette = "RdYlBu",
+    direction = -1,
+    name = "Trend\n(°C/year)",
+    drop = FALSE,
+    na.translate = FALSE,
+    guide = guide_legend(
+      keyheight = unit(0.70, "cm"),
+      keywidth = unit(0.70, "cm")
+    )
+  ) +
+  coord_sf(datum = NA) +
+  theme_void(base_size = 13) +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(face = "bold", size = 14),
+    legend.text = element_text(size = 13),
+    legend.key = element_rect(fill = "white", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+
+print(p)
+
+ggsave(
+  filename = here("results", "LST_trend_MO_2015_2024_fixed_scale_JMS_MB_no_title.png"),
+  plot = p,
+  width = 9,
+  height = 7,
+  dpi = 300,
+  bg = "white"
+)
+
+write_csv(
+  slope_df,
+  here("results", "LST_slope_MO_2015_2024.csv")
+)
