@@ -3,116 +3,254 @@ library(dplyr)
 library(readr)
 library(ggplot2)
 library(grid)
-library(here)
+
+results_folder <- "C:/Users/sanja3/Desktop/hiroshima/FINAL/REZULTATI"
+
+mo_path <- "C:/Users/sanja3/Desktop/hiroshima/Mjesni odbori/Mjesni_odbori_Zagreb.shp"
+
+slope_file <- file.path(
+results_folder,
+"LST_slope_and_Sen_slope_MO_2015_2024.csv"
+)
+
+delta_file <- file.path(
+results_folder,
+"Delta_LST_NDVI_NDBI_MO_2015_2024.csv"
+)
 
 slope_df <- read_csv(
-  here("results", "LST_slope_and_Sen_slope_MO_2015_2024.csv"),
-  show_col_types = FALSE
+slope_file,
+show_col_types = FALSE
 )
 
 delta_df <- read_csv(
-  here("results", "Delta_LST_NDVI_NDBI_MO_2015_2024.csv"),
-  show_col_types = FALSE
+delta_file,
+show_col_types = FALSE
+)
+
+slope_mean <- mean(
+slope_df$slope,
+na.rm = TRUE
+)
+
+sen_mean <- mean(
+slope_df$sen_slope,
+na.rm = TRUE
+)
+
+dLST_mean <- mean(
+delta_df$dLST,
+na.rm = TRUE
+)
+
+consistency_df <- slope_df %>%
+
+left_join(
+
+delta_df %>%
+select(
+JMS_MB,
+dLST
+),
+
+by = "JMS_MB"
+
+) %>%
+
+mutate(
+
+linear_positive = slope > 0,
+sen_positive = sen_slope > 0,
+delta_positive = dLST > 0,
+
+positive_indicators =
+as.integer(linear_positive) +
+as.integer(sen_positive) +
+as.integer(delta_positive),
+
+slope_above_mean =
+slope > slope_mean,
+
+sen_above_mean =
+sen_slope > sen_mean,
+
+dLST_above_mean =
+dLST > dLST_mean,
+
+above_mean_indicators =
+as.integer(slope_above_mean) +
+as.integer(sen_above_mean) +
+as.integer(dLST_above_mean),
+
+consistency_class = case_when(
+
+positive_indicators == 3 &
+above_mean_indicators == 3 ~
+"Strong consistent",
+
+positive_indicators == 3 ~
+"Consistent",
+
+positive_indicators == 2 ~
+"Moderate",
+
+TRUE ~
+"Weak/inconsistent"
+
+)
+
 )
 
 mo <- st_read(
-  here("data", "Mjesni_odbori_Zagreb", "Mjesni_odbori_Zagreb.shp"),
-  quiet = TRUE
+mo_path,
+quiet = TRUE
 )
 
-slope_mean <- mean(slope_df$slope, na.rm = TRUE)
-sen_mean <- mean(slope_df$sen_slope, na.rm = TRUE)
-dLST_mean <- mean(delta_df$dLST, na.rm = TRUE)
-
-stability_df <- slope_df %>%
-  left_join(
-    delta_df %>% select(JMS_MB, dLST),
-    by = "JMS_MB"
-  ) %>%
-  mutate(
-    JMS_MB = as.character(JMS_MB),
-    linear_positive = slope > 0,
-    sen_positive = sen_slope > 0,
-    delta_positive = dLST > 0,
-    positive_indicators =
-      as.integer(linear_positive) +
-      as.integer(sen_positive) +
-      as.integer(delta_positive),
-    slope_above_mean = slope > slope_mean,
-    sen_above_mean = sen_slope > sen_mean,
-    dLST_above_mean = dLST > dLST_mean,
-    above_mean_indicators =
-      as.integer(slope_above_mean) +
-      as.integer(sen_above_mean) +
-      as.integer(dLST_above_mean),
-    stability_class = case_when(
-      positive_indicators == 3 & above_mean_indicators == 3 ~ "Strong stable",
-      positive_indicators == 3 ~ "Stable",
-      positive_indicators == 2 ~ "Moderate",
-      TRUE ~ "Weak/inconsistent"
-    ),
-    stability_class = factor(
-      stability_class,
-      levels = c(
-        "Weak/inconsistent",
-        "Moderate",
-        "Stable",
-        "Strong stable"
-      )
-    )
-  )
-
-mo_stability <- mo %>%
-  mutate(JMS_MB = as.character(JMS_MB)) %>%
-  left_join(stability_df, by = "JMS_MB")
-
-stability_colors <- c(
-  "Weak/inconsistent" = "grey85",
-  "Moderate" = "#fee08b",
-  "Stable" = "#f46d43",
-  "Strong stable" = "#b2182b"
+mo <- mo %>%
+mutate(
+JMS_MB = as.character(JMS_MB)
 )
 
-p_stability <- ggplot(mo_stability) +
-  geom_sf(
-    aes(fill = stability_class),
-    color = "white",
-    linewidth = 0.18
-  ) +
-  scale_fill_manual(
-    values = stability_colors,
-    name = "Stability class",
-    drop = FALSE,
-    na.value = "grey95",
-    guide = guide_legend(
-      keyheight = unit(0.50, "cm"),
-      keywidth = unit(0.50, "cm")
-    )
-  ) +
-  coord_sf(datum = NA) +
-  theme_void() +
-  theme(
-    legend.position = "right",
-    legend.title = element_text(face = "bold", size = 12),
-    legend.text = element_text(size = 11),
-    legend.key = element_rect(fill = "white", color = NA),
-    legend.background = element_rect(fill = "white", color = NA),
-    plot.background = element_rect(fill = "white", color = NA)
-  )
+consistency_df <- consistency_df %>%
+mutate(
+JMS_MB = as.character(JMS_MB)
+)
 
-print(p_stability)
+mo_consistency <- mo %>%
+left_join(
+consistency_df,
+by = "JMS_MB"
+)
+
+consistency_colors <- c(
+
+"Weak/inconsistent" = "grey85",
+
+"Moderate" = "#fee08b",
+
+"Consistent" = "#f46d43",
+
+"Strong consistent" = "#b2182b"
+
+)
+
+p_consistency <- ggplot(
+mo_consistency
+) +
+
+geom_sf(
+
+aes(
+fill = consistency_class
+),
+
+color = "white",
+linewidth = 0.18
+
+) +
+
+scale_fill_manual(
+
+values = consistency_colors,
+
+name = "Consistency class",
+
+drop = FALSE,
+
+na.value = "grey95"
+
+) +
+
+guides(
+
+fill =
+guide_legend(
+
+keyheight = unit(
+0.50,
+"cm"
+),
+
+keywidth = unit(
+0.50,
+"cm"
+)
+
+)
+
+) +
+
+coord_sf(
+datum = NA
+) +
+
+theme_void() +
+
+theme(
+
+legend.position = "right",
+
+legend.direction = "vertical",
+
+legend.title =
+element_text(
+face = "bold",
+size = 12
+),
+
+legend.text =
+element_text(
+size = 11
+),
+
+legend.key =
+element_rect(
+fill = "white",
+color = NA
+),
+
+legend.background =
+element_rect(
+fill = "white",
+color = NA
+),
+
+plot.background =
+element_rect(
+fill = "white",
+color = NA
+)
+
+)
+
+print(
+p_consistency
+)
 
 ggsave(
-  filename = here("results", "LST_stability_magnitude_classification.png"),
-  plot = p_stability,
-  width = 150,
-  height = 95,
-  units = "mm",
-  dpi = 300,
-  bg = "white"
+
+filename = file.path(
+
+results_folder,
+
+"LST_consistency_magnitude_classification_clean.png"
+
+),
+
+plot = p_consistency,
+
+width = 150,
+height = 95,
+
+units = "mm",
+
+dpi = 300,
+
+bg = "white"
+
 )
 
-write_csv(
-  stability_df,
-  here("results", "LST_stability_classification_MO_2015_2024.csv")
+cat(
+"\nKarta spremljena u:\n",
+results_folder
 )
